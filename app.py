@@ -1,7 +1,8 @@
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
+from urllib.parse import parse_qs, urlparse
 
 # Keep local development output focused on the app instead of ChromaDB telemetry.
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
@@ -15,11 +16,19 @@ from sentence_transformers import SentenceTransformer
 
 BASE_DIR = Path(__file__).resolve().parent
 EXCEL_PATH = BASE_DIR / "uploads" / "data.xlsx"
-CHROMA_DIR = BASE_DIR / "chroma_db"
+DEFAULT_GOOGLE_SHEET_URL = (
+    "https://docs.google.com/spreadsheets/d/"
+    "1nwSzIkL-8Dmatx-dIS5zETsgZ4GPzaOJXguVDRqNbgQ/edit?usp=sharing"
+)
+GOOGLE_SHEET_CSV_URL = os.environ.get(
+    "GOOGLE_SHEET_CSV_URL",
+    DEFAULT_GOOGLE_SHEET_URL,
+).strip()
+CHROMA_DIR = Path(os.environ.get("CHROMA_DIR", BASE_DIR / "chroma_db"))
 COLLECTION_NAME = "excel_rows"
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 CANDIDATE_LIMIT = 5
-RESULT_LIMIT = 3
+RESULT_LIMIT = 5
 MIN_RELEVANCE_SCORE = 0.45
 MIN_TOKEN_LENGTH = 3
 
@@ -64,6 +73,7 @@ STOP_WORDS = {
 
 app = Flask(__name__)
 excel_rows_cache: list[dict[str, Any]] = []
+data_source_signature: Optional[str] = None
 
 # Load shared services once when Flask starts. The first run may download the
 # sentence-transformers model if it is not already cached on your machine.
@@ -83,6 +93,42 @@ def row_to_searchable_text(row: pd.Series) -> str:
             parts.append(f"{column_name}: {value}")
 
     return " | ".join(parts)
+
+
+def get_data_source_name() -> str:
+    """Return the configured spreadsheet source name for status messages."""
+    return "Google Sheet" if GOOGLE_SHEET_CSV_URL else "Excel file"
+
+
+def google_sheet_url_to_csv_url(url: str) -> str:
+    """Convert a normal Google Sheets URL into a CSV export URL when possible."""
+    parsed_url = urlparse(url)
+
+    if "docs.google.com" not in parsed_url.netloc:
+        return url
+
+    match = re.search(r"/spreadsheets/d/([^/]+)", parsed_url.path)
+
+    if not match:
+        return url
+
+    spreadsheet_id = match.group(1)
+    query_params = parse_qs(parsed_url.query)
+    gid = query_params.get("gid", ["0"])[0]
+
+    return (
+        f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
+        f"/export?format=csv&gid={gid}"
+    )
+
+
+def dataframe_signature(dataframe: pd.DataFrame) -> str:
+    """Build a lightweight signature to detect spreadsheet content changes."""
+    normalized = dataframe.fillna("").astype(str)
+    row_hash_total = pd.util.hash_pandas_object(normalized, index=True).sum()
+    columns = "|".join(str(column) for column in normalized.columns)
+
+    return f"{columns}:{row_hash_total}:{len(normalized)}"
 
 
 def extract_search_tokens(text: str) -> set[str]:
@@ -139,14 +185,22 @@ def search_exact_rows(query_tokens: set[str]) -> list[dict[str, Any]]:
     return exact_results
 
 
-def load_excel_rows() -> list[dict[str, Any]]:
-    """Read the Excel file and convert rows into ChromaDB-ready records."""
+def load_spreadsheet_dataframe() -> pd.DataFrame:
+    """Read data from Google Sheets CSV when configured, otherwise Excel."""
+    if GOOGLE_SHEET_CSV_URL:
+        csv_url = google_sheet_url_to_csv_url(GOOGLE_SHEET_CSV_URL)
+        return pd.read_csv(csv_url)
+
     if not EXCEL_PATH.exists():
         raise FileNotFoundError(
             f"Excel file was not found at {EXCEL_PATH}. Add your file as uploads/data.xlsx."
         )
 
-    dataframe = pd.read_excel(EXCEL_PATH)
+    return pd.read_excel(EXCEL_PATH)
+
+
+def dataframe_to_rows(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
+    """Convert a Pandas DataFrame into ChromaDB-ready records."""
 
     if dataframe.empty:
         return []
@@ -167,6 +221,13 @@ def load_excel_rows() -> list[dict[str, Any]]:
         )
 
     return records
+
+
+def load_spreadsheet_rows() -> tuple[list[dict[str, Any]], str]:
+    """Load spreadsheet rows and return rows plus a content signature."""
+    dataframe = load_spreadsheet_dataframe()
+
+    return dataframe_to_rows(dataframe), dataframe_signature(dataframe)
 
 
 def rebuild_collection(rows: list[dict[str, Any]]) -> None:
@@ -198,17 +259,18 @@ def rebuild_collection(rows: list[dict[str, Any]]) -> None:
 
 def initialize_vector_store() -> tuple[bool, str]:
     """Load Excel data and prepare ChromaDB before handling searches."""
-    global excel_rows_cache
+    global data_source_signature, excel_rows_cache
 
     try:
-        rows = load_excel_rows()
+        rows, signature = load_spreadsheet_rows()
+        data_source_signature = signature
         excel_rows_cache = rows
         rebuild_collection(rows)
 
         if not rows:
-            return False, "The Excel file exists, but it does not contain any rows."
+            return False, f"The {get_data_source_name()} exists, but it does not contain any rows."
 
-        return True, f"The Excel file has {len(rows)} rows."
+        return True, f"The {get_data_source_name()} has {len(rows)} rows."
     except FileNotFoundError as error:
         return False, str(error)
     except Exception as error:
@@ -220,8 +282,28 @@ last_excel_modified_at = EXCEL_PATH.stat().st_mtime if EXCEL_PATH.exists() else 
 
 
 def refresh_vector_store_if_needed() -> tuple[bool, str]:
-    """Rebuild ChromaDB when uploads/data.xlsx changes while Flask is running."""
-    global excel_rows_cache, last_excel_modified_at, startup_message, vector_store_ready
+    """Rebuild ChromaDB when the spreadsheet changes while Flask is running."""
+    global data_source_signature, excel_rows_cache
+    global last_excel_modified_at, startup_message, vector_store_ready
+
+    if GOOGLE_SHEET_CSV_URL:
+        rows, signature = load_spreadsheet_rows()
+
+        if signature == data_source_signature:
+            return vector_store_ready, startup_message
+
+        data_source_signature = signature
+        excel_rows_cache = rows
+        rebuild_collection(rows)
+
+        if not rows:
+            vector_store_ready = False
+            startup_message = "The Google Sheet exists, but it does not contain any rows."
+        else:
+            vector_store_ready = True
+            startup_message = f"The Google Sheet has {len(rows)} rows."
+
+        return vector_store_ready, startup_message
 
     if not EXCEL_PATH.exists():
         excel_rows_cache = []
@@ -238,7 +320,8 @@ def refresh_vector_store_if_needed() -> tuple[bool, str]:
     if current_modified_at == last_excel_modified_at:
         return vector_store_ready, startup_message
 
-    rows = load_excel_rows()
+    rows, signature = load_spreadsheet_rows()
+    data_source_signature = signature
     excel_rows_cache = rows
     rebuild_collection(rows)
     last_excel_modified_at = current_modified_at
@@ -266,7 +349,22 @@ def homepage():
 @app.route("/search", methods=["POST"])
 def search():
     """Receive a query, run semantic search, and return relevant Excel rows."""
-    ready, message = refresh_vector_store_if_needed()
+    try:
+        ready, message = refresh_vector_store_if_needed()
+    except Exception as error:
+        message = f"Could not refresh the spreadsheet data: {error}"
+
+        return (
+            jsonify(
+                {
+                    "error": message,
+                    "results": [],
+                    "status": message,
+                    "status_ready": False,
+                }
+            ),
+            500,
+        )
 
     if not ready:
         return (

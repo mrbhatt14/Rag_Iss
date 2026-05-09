@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Excel Semantic Search</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="search-panel">
+            <p class="eyebrow">RAG Retrieval Demo</p>
+            <h1>Search your Excel data with semantic matching</h1>
+            <p class="description">
+                Ask a business question or type keywords. The app embeds your query,
+                searches ChromaDB, and returns the most relevant Excel rows.
+            </p>
+
+            {% if not vector_store_ready %}
+                <div id="dataStatus" class="status status-error">{{ startup_message }}</div>
+            {% else %}
+                <div id="dataStatus" class="status status-ready">{{ startup_message }}</div>
+            {% endif %}
+
+            <form id="searchForm" class="search-form">
+                <label for="queryInput">Search query</label>
+                <div class="search-row">
+                    <input
+                        id="queryInput"
+                        name="query"
+                        type="search"
+                        placeholder="Example: Which products support analytics?"
+                        autocomplete="off"
+                    >
+                    <button type="submit">Search</button>
+                </div>
+            </form>
+        </section>
+
+        <section class="results-panel" aria-live="polite">
+            <div class="results-header">
+                <h2>Results</h2>
+                <span id="resultCount">No search yet</span>
+            </div>
+            <div id="messageBox" class="message-box">
+                Enter a query to retrieve relevant rows from the Excel file.
+            </div>
+            <div id="resultsContainer" class="results-container"></div>
+        </section>
+    </main>
+
+    <script>
+        const searchForm = document.getElementById("searchForm");
+        const queryInput = document.getElementById("queryInput");
+        const messageBox = document.getElementById("messageBox");
+        const resultsContainer = document.getElementById("resultsContainer");
+        const resultCount = document.getElementById("resultCount");
+        const dataStatus = document.getElementById("dataStatus");
+
+        function setMessage(message, type = "info") {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type}`;
+        }
+
+        function clearResults() {
+            resultsContainer.innerHTML = "";
+            resultCount.textContent = "No results";
+        }
+
+        function updateDataStatus(data) {
+            if (!data.status) {
+                return;
+            }
+
+            dataStatus.textContent = data.status;
+            dataStatus.className = data.status_ready
+                ? "status status-ready"
+                : "status status-error";
+        }
+
+        function renderResults(results) {
+            resultsContainer.innerHTML = "";
+            resultCount.textContent = `${results.length} result${results.length === 1 ? "" : "s"}`;
+
+            results.forEach((result, index) => {
+                const card = document.createElement("article");
+                card.className = "result-card";
+
+                const title = document.createElement("div");
+                title.className = "result-title";
+
+                const titleText = document.createElement("span");
+                titleText.textContent = `Result ${index + 1}`;
+
+                const scoreText = document.createElement("strong");
+                scoreText.textContent = `Relevance ${result.score}`;
+
+                title.appendChild(titleText);
+                title.appendChild(scoreText);
+
+                const text = document.createElement("p");
+                text.className = "result-text";
+                text.textContent = result.text;
+
+                const table = document.createElement("div");
+                table.className = "result-grid";
+
+                Object.entries(result.row).forEach(([key, value]) => {
+                    const item = document.createElement("div");
+                    item.className = "result-field";
+
+                    const fieldLabel = document.createElement("span");
+                    fieldLabel.textContent = key;
+
+                    const fieldValue = document.createElement("p");
+                    fieldValue.textContent = value;
+
+                    item.appendChild(fieldLabel);
+                    item.appendChild(fieldValue);
+                    table.appendChild(item);
+                });
+
+                card.appendChild(title);
+                card.appendChild(text);
+                card.appendChild(table);
+                resultsContainer.appendChild(card);
+            });
+        }
+
+        searchForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const query = queryInput.value.trim();
+            clearResults();
+
+            if (!query) {
+                setMessage("Please enter a search query.", "error");
+                return;
+            }
+
+            setMessage("Searching semantic matches...", "loading");
+
+            try {
+                const response = await fetch("/search", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ query })
+                });
+
+                const data = await response.json();
+                updateDataStatus(data);
+
+                if (!response.ok) {
+                    setMessage(data.error || "Search failed.", "error");
+                    return;
+                }
+
+                if (!data.results || data.results.length === 0) {
+                    setMessage(data.message || "No matching results were found.", "info");
+                    return;
+                }
+
+                setMessage("Most relevant rows from your Excel file:", "success");
+                renderResults(data.results);
+            } catch (error) {
+                setMessage("Unable to reach the search service. Is Flask running?", "error");
+            }
+        });
+    </script>
+</body>
+</html>

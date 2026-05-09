@@ -293,26 +293,6 @@ def rebuild_collection(rows: list[dict[str, Any]]) -> None:
     )
 
 
-def initialize_vector_store() -> tuple[bool, str]:
-    """Load Excel data and prepare ChromaDB before handling searches."""
-    global data_source_signature, excel_rows_cache
-
-    try:
-        rows, signature = load_spreadsheet_rows()
-        data_source_signature = signature
-        excel_rows_cache = rows
-        rebuild_collection(rows)
-
-        if not rows:
-            return False, f"The {get_data_source_name()} exists, but it does not contain any rows."
-
-        return True, f"The {get_data_source_name()} has {len(rows)} rows."
-    except FileNotFoundError as error:
-        return False, str(error)
-    except Exception as error:
-        return False, f"Could not initialize the vector store: {error}"
-
-
 vector_store_ready = True
 startup_message = "Spreadsheet data will load on first search."
 last_excel_modified_at = EXCEL_PATH.stat().st_mtime if EXCEL_PATH.exists() else None

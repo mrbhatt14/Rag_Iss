@@ -1,3 +1,9 @@
+---
+title: RAG Excel Search
+sdk: docker
+app_port: 7860
+---
+
 # Excel RAG Semantic Search
 
 A small Flask web app that reads rows from `uploads/data.xlsx` or a Google Sheet, embeds them with `sentence-transformers`, stores them in ChromaDB, and retrieves the most relevant rows for a user search query.
@@ -122,3 +128,27 @@ MKL_NUM_THREADS=1
 ```
 
 The included `render.yaml` can also be used as a Render Blueprint. The first deploy may be slow because PyTorch and the embedding model are large.
+
+## Deploy On Hugging Face Spaces
+
+This branch includes a `Dockerfile` for Hugging Face Spaces. Create a new Space with:
+
+```text
+SDK: Docker
+Visibility: Public or Private
+Hardware: CPU Basic
+```
+
+Then push this branch to the Space repository, or mirror the branch from GitHub. The app listens on port `7860`, which is the default port expected by Docker Spaces.
+
+Recommended Space variables:
+
+```text
+GOOGLE_SHEET_CSV_URL=https://docs.google.com/spreadsheets/d/1nwSzIkL-8Dmatx-dIS5zETsgZ4GPzaOJXguVDRqNbgQ/edit?usp=sharing
+CHROMA_DIR=/tmp/chroma_db
+ANONYMIZED_TELEMETRY=False
+TOKENIZERS_PARALLELISM=false
+OMP_NUM_THREADS=1
+OPENBLAS_NUM_THREADS=1
+MKL_NUM_THREADS=1
+```

@@ -105,7 +105,7 @@ This project is better suited to Render than static hosts like GitHub Pages beca
 ```text
 Language: Python 3
 Build Command: pip install -r requirements.txt
-Start Command: gunicorn app:app --timeout 120
+Start Command: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 180
 ```
 
 5. Add these environment variables:
@@ -115,6 +115,10 @@ GOOGLE_SHEET_CSV_URL=https://docs.google.com/spreadsheets/d/1nwSzIkL-8Dmatx-dIS5
 CHROMA_DIR=/opt/render/project/src/chroma_db
 ANONYMIZED_TELEMETRY=False
 PYTHON_VERSION=3.11.9
+TOKENIZERS_PARALLELISM=false
+OMP_NUM_THREADS=1
+OPENBLAS_NUM_THREADS=1
+MKL_NUM_THREADS=1
 ```
 
 The included `render.yaml` can also be used as a Render Blueprint. The first deploy may be slow because PyTorch and the embedding model are large.

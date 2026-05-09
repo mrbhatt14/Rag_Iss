@@ -6,12 +6,13 @@ from urllib.parse import parse_qs, urlparse
 
 # Keep local development output focused on the app instead of ChromaDB telemetry.
 os.environ.setdefault("ANONYMIZED_TELEMETRY", "False")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
 
-import chromadb
 import pandas as pd
-from chromadb.config import Settings
 from flask import Flask, jsonify, render_template, request
-from sentence_transformers import SentenceTransformer
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -74,14 +75,43 @@ STOP_WORDS = {
 app = Flask(__name__)
 excel_rows_cache: list[dict[str, Any]] = []
 data_source_signature: Optional[str] = None
+embedding_model: Any = None
+chroma_client: Any = None
 
-# Load shared services once when Flask starts. The first run may download the
-# sentence-transformers model if it is not already cached on your machine.
-embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-chroma_client = chromadb.PersistentClient(
-    path=str(CHROMA_DIR),
-    settings=Settings(anonymized_telemetry=False),
-)
+
+def get_embedding_model() -> Any:
+    """Load the embedding model lazily to reduce server startup memory usage."""
+    global embedding_model
+
+    if embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+
+        try:
+            import torch
+
+            torch.set_num_threads(1)
+        except Exception:
+            pass
+
+        embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME, device="cpu")
+
+    return embedding_model
+
+
+def get_chroma_client() -> Any:
+    """Create the ChromaDB client lazily so Gunicorn can bind its port first."""
+    global chroma_client
+
+    if chroma_client is None:
+        import chromadb
+        from chromadb.config import Settings
+
+        chroma_client = chromadb.PersistentClient(
+            path=str(CHROMA_DIR),
+            settings=Settings(anonymized_telemetry=False),
+        )
+
+    return chroma_client
 
 
 def row_to_searchable_text(row: pd.Series) -> str:
@@ -232,14 +262,16 @@ def load_spreadsheet_rows() -> tuple[list[dict[str, Any]], str]:
 
 def rebuild_collection(rows: list[dict[str, Any]]) -> None:
     """Create a fresh ChromaDB collection from the current Excel rows."""
+    client = get_chroma_client()
+
     existing_collections = {
-        collection.name for collection in chroma_client.list_collections()
+        collection.name for collection in client.list_collections()
     }
 
     if COLLECTION_NAME in existing_collections:
-        chroma_client.delete_collection(name=COLLECTION_NAME)
+        client.delete_collection(name=COLLECTION_NAME)
 
-    collection = chroma_client.create_collection(name=COLLECTION_NAME)
+    collection = client.create_collection(name=COLLECTION_NAME)
 
     if not rows:
         return
@@ -247,7 +279,11 @@ def rebuild_collection(rows: list[dict[str, Any]]) -> None:
     documents = [row["text"] for row in rows]
     ids = [row["id"] for row in rows]
     metadatas = [row["metadata"] for row in rows]
-    embeddings = embedding_model.encode(documents).tolist()
+    embeddings = get_embedding_model().encode(
+        documents,
+        batch_size=16,
+        show_progress_bar=False,
+    ).tolist()
 
     collection.add(
         ids=ids,
@@ -277,7 +313,8 @@ def initialize_vector_store() -> tuple[bool, str]:
         return False, f"Could not initialize the vector store: {error}"
 
 
-vector_store_ready, startup_message = initialize_vector_store()
+vector_store_ready = True
+startup_message = "Spreadsheet data will load on first search."
 last_excel_modified_at = EXCEL_PATH.stat().st_mtime if EXCEL_PATH.exists() else None
 
 
@@ -317,7 +354,7 @@ def refresh_vector_store_if_needed() -> tuple[bool, str]:
 
     current_modified_at = EXCEL_PATH.stat().st_mtime
 
-    if current_modified_at == last_excel_modified_at:
+    if current_modified_at == last_excel_modified_at and data_source_signature is not None:
         return vector_store_ready, startup_message
 
     rows, signature = load_spreadsheet_rows()
@@ -408,8 +445,11 @@ def search():
                 }
             )
 
-        collection = chroma_client.get_collection(name=COLLECTION_NAME)
-        query_embedding = embedding_model.encode([query]).tolist()[0]
+        collection = get_chroma_client().get_collection(name=COLLECTION_NAME)
+        query_embedding = get_embedding_model().encode(
+            [query],
+            show_progress_bar=False,
+        ).tolist()[0]
 
         search_results = collection.query(
             query_embeddings=[query_embedding],

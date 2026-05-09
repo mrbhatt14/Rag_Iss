@@ -3,7 +3,7 @@ services:
     name: rag-iss
     runtime: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --timeout 120
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --threads 1 --timeout 180
     envVars:
       - key: CHROMA_DIR
         value: /opt/render/project/src/chroma_db
@@ -13,3 +13,11 @@ services:
         value: "False"
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: TOKENIZERS_PARALLELISM
+        value: "false"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"

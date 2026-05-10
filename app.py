@@ -37,8 +37,10 @@ RESULT_LIMIT = 5
 DOCUMENT_RESULT_LIMIT = 3
 MIN_RELEVANCE_SCORE = 0.45
 DOCUMENT_MIN_RELEVANCE_SCORE = 0.0
+MIN_DIRECT_ANSWER_SCORE = 0.25
 MIN_TOKEN_LENGTH = 3
 ALLOWED_DOCUMENT_EXTENSIONS = {".csv", ".xlsx", ".txt", ".md", ".pdf"}
+SUPPORTED_FILE_TYPES_MESSAGE = "Upload CSV, XLSX, TXT, Markdown, or PDF files. DOCX is not supported."
 
 STOP_WORDS = {
     "all",
@@ -84,6 +86,7 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 excel_rows_cache: list[dict[str, Any]] = []
 data_source_signature: Optional[str] = None
 uploaded_document_signature: Optional[str] = None
+uploaded_document_chunk_counts: dict[str, int] = {}
 embedding_model: Any = None
 chroma_client: Any = None
 
@@ -360,7 +363,7 @@ def extract_best_text_answer(
                 "source": candidate["source"],
             }
 
-    if not best_candidate:
+    if not best_candidate or best_candidate["score"] < MIN_DIRECT_ANSWER_SCORE:
         return None
 
     return {
@@ -547,13 +550,6 @@ def load_uploaded_document_rows() -> list[dict[str, Any]]:
 def uploaded_documents_summary() -> dict[str, Any]:
     """Return uploaded file metadata for the upload panel."""
     paths = get_uploaded_document_paths()
-    rows = load_uploaded_document_rows() if paths else []
-    chunks_by_source: dict[str, int] = {}
-
-    for row in rows:
-        source = str(row["metadata"].get("Source", ""))
-        chunks_by_source[source] = chunks_by_source.get(source, 0) + 1
-
     documents = []
 
     for path in paths:
@@ -561,7 +557,7 @@ def uploaded_documents_summary() -> dict[str, Any]:
             {
                 "name": path.name,
                 "size_kb": round(path.stat().st_size / 1024, 1),
-                "chunks": chunks_by_source.get(path.name, 0),
+                "chunks": uploaded_document_chunk_counts.get(path.name, 0),
             }
         )
 
@@ -644,7 +640,7 @@ last_excel_modified_at = EXCEL_PATH.stat().st_mtime if EXCEL_PATH.exists() else 
 def refresh_vector_store_if_needed() -> tuple[bool, str]:
     """Rebuild ChromaDB when the spreadsheet changes while Flask is running."""
     global data_source_signature, excel_rows_cache
-    global uploaded_document_signature
+    global uploaded_document_chunk_counts, uploaded_document_signature
     global last_excel_modified_at, startup_message, vector_store_ready
 
     if has_uploaded_documents():
@@ -655,6 +651,12 @@ def refresh_vector_store_if_needed() -> tuple[bool, str]:
 
         rows = load_uploaded_document_rows()
         uploaded_document_signature = signature
+        uploaded_document_chunk_counts = {}
+
+        for row in rows:
+            source = str(row["metadata"].get("Source", ""))
+            uploaded_document_chunk_counts[source] = uploaded_document_chunk_counts.get(source, 0) + 1
+
         excel_rows_cache = rows
         rebuild_collection(rows)
 
@@ -668,6 +670,7 @@ def refresh_vector_store_if_needed() -> tuple[bool, str]:
         return vector_store_ready, startup_message
 
     if GOOGLE_SHEET_CSV_URL:
+        uploaded_document_chunk_counts = {}
         rows, signature = load_spreadsheet_rows()
 
         if signature == data_source_signature:
@@ -688,6 +691,7 @@ def refresh_vector_store_if_needed() -> tuple[bool, str]:
 
     if not EXCEL_PATH.exists():
         excel_rows_cache = []
+        uploaded_document_chunk_counts = {}
         vector_store_ready = False
         startup_message = (
             f"Excel file was not found at {EXCEL_PATH}. "
@@ -704,6 +708,7 @@ def refresh_vector_store_if_needed() -> tuple[bool, str]:
     rows, signature = load_spreadsheet_rows()
     data_source_signature = signature
     excel_rows_cache = rows
+    uploaded_document_chunk_counts = {}
     rebuild_collection(rows)
     last_excel_modified_at = current_modified_at
 
@@ -736,7 +741,7 @@ def upload_documents():
         return jsonify({"error": "Please choose at least one document to upload."}), 400
 
     DOCUMENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    uploaded_files = []
+    validated_files = []
 
     for file in files:
         if not file.filename:
@@ -745,19 +750,30 @@ def upload_documents():
         original_filename = secure_filename(file.filename)
         suffix = Path(original_filename).suffix.lower()
 
+        if not original_filename:
+            return jsonify({"error": "One selected file has an invalid filename."}), 400
+
         if suffix not in ALLOWED_DOCUMENT_EXTENSIONS:
             return (
                 jsonify(
                     {
                         "error": (
                             f"Unsupported file type: {original_filename}. "
-                            "Upload CSV, XLSX, TXT, Markdown, or PDF files."
+                            f"{SUPPORTED_FILE_TYPES_MESSAGE}"
                         )
                     }
                 ),
                 400,
             )
 
+        validated_files.append((file, original_filename))
+
+    if not validated_files:
+        return jsonify({"error": "Please choose at least one valid document to upload."}), 400
+
+    uploaded_files = []
+
+    for file, original_filename in validated_files:
         file_path = DOCUMENT_UPLOAD_DIR / original_filename
         file.save(file_path)
         uploaded_files.append(original_filename)
@@ -792,6 +808,7 @@ def upload_documents():
 def list_uploaded_documents():
     """Return uploaded document metadata for the upload panel."""
     try:
+        refresh_vector_store_if_needed()
         summary = uploaded_documents_summary()
     except Exception:
         summary = {

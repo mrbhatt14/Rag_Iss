@@ -544,6 +544,34 @@ def load_uploaded_document_rows() -> list[dict[str, Any]]:
     return rows
 
 
+def uploaded_documents_summary() -> dict[str, Any]:
+    """Return uploaded file metadata for the upload panel."""
+    paths = get_uploaded_document_paths()
+    rows = load_uploaded_document_rows() if paths else []
+    chunks_by_source: dict[str, int] = {}
+
+    for row in rows:
+        source = str(row["metadata"].get("Source", ""))
+        chunks_by_source[source] = chunks_by_source.get(source, 0) + 1
+
+    documents = []
+
+    for path in paths:
+        documents.append(
+            {
+                "name": path.name,
+                "size_kb": round(path.stat().st_size / 1024, 1),
+                "chunks": chunks_by_source.get(path.name, 0),
+            }
+        )
+
+    return {
+        "document_count": len(documents),
+        "chunk_count": sum(document["chunks"] for document in documents),
+        "documents": documents,
+    }
+
+
 def dataframe_to_rows(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
     """Convert a Pandas DataFrame into ChromaDB-ready records."""
 
@@ -757,6 +785,28 @@ def upload_documents():
             "status_ready": ready,
         }
     )
+
+
+@app.route("/uploads", methods=["GET"])
+def list_uploaded_documents():
+    """Return uploaded document metadata for the upload panel."""
+    try:
+        summary = uploaded_documents_summary()
+    except Exception:
+        summary = {
+            "document_count": len(get_uploaded_document_paths()),
+            "chunk_count": 0,
+            "documents": [
+                {
+                    "name": path.name,
+                    "size_kb": round(path.stat().st_size / 1024, 1),
+                    "chunks": 0,
+                }
+                for path in get_uploaded_document_paths()
+            ],
+        }
+
+    return jsonify(summary)
 
 
 @app.route("/uploads/clear", methods=["POST"])

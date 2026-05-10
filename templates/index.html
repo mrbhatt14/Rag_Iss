@@ -23,8 +23,19 @@
             {% endif %}
 
             <form id="uploadForm" class="upload-form">
-                <label for="documentInput">Upload documents</label>
-                <div class="upload-row">
+                <div class="upload-stats" aria-live="polite">
+                    <div>
+                        <strong id="documentStat">0</strong>
+                        <span>Documents</span>
+                    </div>
+                    <div>
+                        <strong id="chunkStat">0</strong>
+                        <span>Chunks</span>
+                    </div>
+                </div>
+
+                <label class="section-label" for="documentInput">Upload</label>
+                <div id="dropZone" class="drop-zone">
                     <input
                         id="documentInput"
                         name="documents"
@@ -32,9 +43,22 @@
                         multiple
                         accept=".csv,.xlsx,.txt,.md,.pdf"
                     >
-                    <button type="submit">Upload</button>
+                    <div class="upload-icon" aria-hidden="true">↑</div>
+                    <strong>Drop files here</strong>
+                    <p>PDF · TXT · CSV · XLSX · MD <button id="browseButton" type="button">browse</button></p>
                 </div>
-                <p class="upload-hint">Supported formats: CSV, XLSX, TXT, Markdown, PDF.</p>
+
+                <div class="upload-actions">
+                    <button type="submit">Upload selected files</button>
+                    <span id="selectedFileCount">No files selected</span>
+                </div>
+
+                <div class="document-list-wrap">
+                    <div class="section-label">Documents</div>
+                    <div id="documentList" class="document-list">
+                        <p>No uploaded documents yet.</p>
+                    </div>
+                </div>
             </form>
 
             <div class="data-source-note">
@@ -78,6 +102,12 @@
     <script>
         const uploadForm = document.getElementById("uploadForm");
         const documentInput = document.getElementById("documentInput");
+        const dropZone = document.getElementById("dropZone");
+        const browseButton = document.getElementById("browseButton");
+        const selectedFileCount = document.getElementById("selectedFileCount");
+        const documentStat = document.getElementById("documentStat");
+        const chunkStat = document.getElementById("chunkStat");
+        const documentList = document.getElementById("documentList");
         const searchForm = document.getElementById("searchForm");
         const queryInput = document.getElementById("queryInput");
         const clearUploadsButton = document.getElementById("clearUploadsButton");
@@ -94,6 +124,65 @@
         function clearResults() {
             resultsContainer.innerHTML = "";
             resultCount.textContent = "No results";
+        }
+
+        function formatFileSize(sizeKb) {
+            if (sizeKb >= 1024) {
+                return `${(sizeKb / 1024).toFixed(1)} MB`;
+            }
+
+            return `${sizeKb.toFixed(1)} KB`;
+        }
+
+        function updateSelectedFiles() {
+            const count = documentInput.files.length;
+            selectedFileCount.textContent = count
+                ? `${count} file${count === 1 ? "" : "s"} selected`
+                : "No files selected";
+        }
+
+        function renderUploadSummary(summary) {
+            documentStat.textContent = summary.document_count || 0;
+            chunkStat.textContent = summary.chunk_count || 0;
+            documentList.innerHTML = "";
+
+            if (!summary.documents || !summary.documents.length) {
+                const empty = document.createElement("p");
+                empty.textContent = "No uploaded documents yet.";
+                documentList.appendChild(empty);
+                return;
+            }
+
+            summary.documents.forEach((document, index) => {
+                const item = document.createElement("div");
+                item.className = "document-item";
+
+                const dot = document.createElement("span");
+                dot.className = index % 2 === 0 ? "document-dot blue" : "document-dot green";
+
+                const detail = document.createElement("div");
+                const name = document.createElement("strong");
+                name.textContent = document.name;
+
+                const meta = document.createElement("p");
+                meta.textContent = `${formatFileSize(document.size_kb)} · ${document.chunks} chunk${document.chunks === 1 ? "" : "s"}`;
+
+                detail.appendChild(name);
+                detail.appendChild(meta);
+                item.appendChild(dot);
+                item.appendChild(detail);
+                documentList.appendChild(item);
+            });
+        }
+
+        async function loadUploadSummary() {
+            try {
+                const response = await fetch("/uploads");
+                const summary = await response.json();
+                renderUploadSummary(summary);
+            } catch (error) {
+                renderUploadSummary({ document_count: 0, chunk_count: 0, documents: [] });
+            }
         }
 
         function getHighlightTerms(query) {
@@ -285,9 +374,33 @@
                 clearResults();
                 setMessage(data.message || "Documents uploaded and indexed.", "success");
                 documentInput.value = "";
+                updateSelectedFiles();
+                loadUploadSummary();
             } catch (error) {
                 setMessage("Unable to upload documents. Is Flask running?", "error");
             }
+        });
+
+        browseButton.addEventListener("click", () => {
+            documentInput.click();
+        });
+
+        documentInput.addEventListener("change", updateSelectedFiles);
+
+        dropZone.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            dropZone.classList.add("is-dragging");
+        });
+
+        dropZone.addEventListener("dragleave", () => {
+            dropZone.classList.remove("is-dragging");
+        });
+
+        dropZone.addEventListener("drop", (event) => {
+            event.preventDefault();
+            dropZone.classList.remove("is-dragging");
+            documentInput.files = event.dataTransfer.files;
+            updateSelectedFiles();
         });
 
         clearUploadsButton.addEventListener("click", async () => {
@@ -308,6 +421,7 @@
                 }
 
                 setMessage(data.message || "Uploaded documents removed.", "success");
+                loadUploadSummary();
             } catch (error) {
                 setMessage("Unable to remove uploaded documents. Is Flask running?", "error");
             }
@@ -355,6 +469,9 @@
                 setMessage("Unable to reach the search service. Is Flask running?", "error");
             }
         });
+
+        updateSelectedFiles();
+        loadUploadSummary();
     </script>
 </body>
 </html>

@@ -602,6 +602,7 @@ def search():
     payload = request.get_json(silent=True) or {}
     query = str(payload.get("query", "")).strip()
     query_tokens = extract_search_tokens(query)
+    using_uploaded_documents = has_uploaded_documents()
 
     if not query:
         return (
@@ -617,7 +618,7 @@ def search():
         )
 
     try:
-        exact_results = search_exact_rows(query_tokens)
+        exact_results = [] if using_uploaded_documents else search_exact_rows(query_tokens)
 
         if exact_results:
             return jsonify(
@@ -659,7 +660,11 @@ def search():
             # ChromaDB returns the nearest rows even when they are weak matches.
             # This score keeps the UI focused on rows that are actually relevant.
             score = round(1 / (1 + float(distance)), 4)
-            has_exact_match = metadata_contains_query_token(metadata, query_tokens)
+            has_exact_match = (
+                False
+                if using_uploaded_documents
+                else metadata_contains_query_token(metadata, query_tokens)
+            )
 
             if score < MIN_RELEVANCE_SCORE and not has_exact_match:
                 continue
@@ -675,7 +680,7 @@ def search():
 
         exact_results = [result for result in results if result["has_exact_match"]]
 
-        if exact_results:
+        if exact_results and not using_uploaded_documents:
             results = exact_results
 
         results = results[:RESULT_LIMIT]

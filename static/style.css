@@ -227,6 +227,14 @@ button:hover {
     overflow-wrap: anywhere;
 }
 
+.query-highlight {
+    padding: 1px 3px;
+    border-radius: 4px;
+    background: #fef08a;
+    color: inherit;
+    font-weight: 850;
+}
+
 .result-card {
     border: 1px solid var(--line);
     border-radius: 8px;

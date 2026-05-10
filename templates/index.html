@@ -84,7 +84,50 @@
             resultCount.textContent = "No results";
         }
 
-        function renderDirectAnswer(answer) {
+        function getHighlightTerms(query) {
+            const stopWords = new Set([
+                "and", "are", "for", "from", "how", "into", "the", "what",
+                "when", "where", "which", "who", "why", "with", "show",
+                "tell", "give", "get", "only", "result", "results"
+            ]);
+
+            return [...new Set((query.toLowerCase().match(/[a-z0-9]+/g) || [])
+                .filter((term) => term.length >= 3 && !stopWords.has(term)))];
+        }
+
+        function escapeRegex(text) {
+            return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        }
+
+        function appendHighlightedText(element, text, query) {
+            const terms = getHighlightTerms(query);
+
+            if (!terms.length) {
+                element.textContent = text;
+                return;
+            }
+
+            const pattern = new RegExp(`(${terms.map(escapeRegex).join("|")})`, "gi");
+            const parts = String(text).split(pattern);
+
+            parts.forEach((part) => {
+                if (!part) {
+                    return;
+                }
+
+                if (terms.includes(part.toLowerCase())) {
+                    const mark = document.createElement("mark");
+                    mark.className = "query-highlight";
+                    mark.textContent = part;
+                    element.appendChild(mark);
+                    return;
+                }
+
+                element.appendChild(document.createTextNode(part));
+            });
+        }
+
+        function renderDirectAnswer(answer, query) {
             if (!answer) {
                 return;
             }
@@ -96,7 +139,7 @@
             label.textContent = answer.label;
 
             const value = document.createElement("strong");
-            value.textContent = answer.value;
+            appendHighlightedText(value, answer.value, query);
 
             card.appendChild(label);
             card.appendChild(value);
@@ -121,7 +164,7 @@
                 : "status status-error";
         }
 
-        function renderResults(results) {
+        function renderResults(results, query) {
             resultsContainer.innerHTML = "";
             resultCount.textContent = `${results.length} result${results.length === 1 ? "" : "s"}`;
 
@@ -145,7 +188,7 @@
 
                 const text = document.createElement("p");
                 text.className = isDocumentResult ? "result-text document-excerpt" : "result-text";
-                text.textContent = result.text;
+                appendHighlightedText(text, result.text, query);
 
                 card.appendChild(title);
                 card.appendChild(text);
@@ -183,7 +226,7 @@
                             fieldLabel.textContent = key;
 
                             const fieldValue = document.createElement("p");
-                            fieldValue.textContent = value;
+                            appendHighlightedText(fieldValue, value, query);
 
                             item.appendChild(fieldLabel);
                             item.appendChild(fieldValue);
@@ -271,8 +314,8 @@
                 }
 
                 setMessage("Most relevant results from your indexed content:", "success");
-                renderResults(data.results);
-                renderDirectAnswer(data.direct_answer);
+                renderResults(data.results, query);
+                renderDirectAnswer(data.direct_answer, query);
             } catch (error) {
                 setMessage("Unable to reach the search service. Is Flask running?", "error");
             }

@@ -10,10 +10,10 @@
     <main class="page-shell">
         <section class="search-panel">
             <p class="eyebrow">RAG Retrieval - By Shivam Bhatt </p>
-            <h1>Search your Excel data with semantic matching</h1>
+            <h1>Search your documents with semantic matching</h1>
             <p class="description">
                 Ask a business question or type keywords. The app embeds your query,
-                searches ChromaDB, and returns the most relevant Excel rows.
+                searches ChromaDB, and returns the most relevant document or spreadsheet results.
             </p>
 
             {% if not vector_store_ready %}
@@ -58,7 +58,7 @@
                 <span id="resultCount">No search yet</span>
             </div>
             <div id="messageBox" class="message-box">
-                Enter a query to retrieve relevant rows from the Excel file.
+                Enter a query to retrieve relevant information from your indexed content.
             </div>
             <div id="resultsContainer" class="results-container"></div>
         </section>
@@ -122,20 +122,22 @@
                 const table = document.createElement("div");
                 table.className = "result-grid";
 
-                Object.entries(result.row).forEach(([key, value]) => {
-                    const item = document.createElement("div");
-                    item.className = "result-field";
+                Object.entries(result.row)
+                    .filter(([key]) => key.toLowerCase() !== "content")
+                    .forEach(([key, value]) => {
+                        const item = document.createElement("div");
+                        item.className = "result-field";
 
-                    const fieldLabel = document.createElement("span");
-                    fieldLabel.textContent = key;
+                        const fieldLabel = document.createElement("span");
+                        fieldLabel.textContent = key;
 
-                    const fieldValue = document.createElement("p");
-                    fieldValue.textContent = value;
+                        const fieldValue = document.createElement("p");
+                        fieldValue.textContent = value;
 
-                    item.appendChild(fieldLabel);
-                    item.appendChild(fieldValue);
-                    table.appendChild(item);
-                });
+                        item.appendChild(fieldLabel);
+                        item.appendChild(fieldValue);
+                        table.appendChild(item);
+                    });
 
                 card.appendChild(title);
                 card.appendChild(text);

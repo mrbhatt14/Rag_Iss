@@ -181,7 +181,7 @@
                 return;
             }
 
-            summary.documents.forEach((document, index) => {
+            summary.documents.forEach((uploadedDocument, index) => {
                 const item = document.createElement("div");
                 item.className = "document-item";
 
@@ -190,10 +190,10 @@
 
                 const detail = document.createElement("div");
                 const name = document.createElement("strong");
-                name.textContent = document.name;
+                name.textContent = uploadedDocument.name;
 
                 const meta = document.createElement("p");
-                meta.textContent = `${formatFileSize(document.size_kb)} · ${document.chunks} chunk${document.chunks === 1 ? "" : "s"}`;
+                meta.textContent = `${formatFileSize(uploadedDocument.size_kb)} · ${uploadedDocument.chunks} chunk${uploadedDocument.chunks === 1 ? "" : "s"}`;
 
                 detail.appendChild(name);
                 detail.appendChild(meta);

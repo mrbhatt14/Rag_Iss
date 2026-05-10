@@ -22,6 +22,21 @@
                 <div id="dataStatus" class="status status-ready">{{ startup_message }}</div>
             {% endif %}
 
+            <form id="uploadForm" class="upload-form">
+                <label for="documentInput">Upload documents</label>
+                <div class="upload-row">
+                    <input
+                        id="documentInput"
+                        name="documents"
+                        type="file"
+                        multiple
+                        accept=".csv,.xlsx,.txt,.md,.pdf"
+                    >
+                    <button type="submit">Upload</button>
+                </div>
+                <p class="upload-hint">Supported formats: CSV, XLSX, TXT, Markdown, PDF.</p>
+            </form>
+
             <form id="searchForm" class="search-form">
                 <label for="queryInput">Search query</label>
                 <div class="search-row">
@@ -50,6 +65,8 @@
     </main>
 
     <script>
+        const uploadForm = document.getElementById("uploadForm");
+        const documentInput = document.getElementById("documentInput");
         const searchForm = document.getElementById("searchForm");
         const queryInput = document.getElementById("queryInput");
         const messageBox = document.getElementById("messageBox");
@@ -126,6 +143,44 @@
                 resultsContainer.appendChild(card);
             });
         }
+
+        uploadForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            if (!documentInput.files.length) {
+                setMessage("Please choose at least one document to upload.", "error");
+                return;
+            }
+
+            const formData = new FormData();
+
+            Array.from(documentInput.files).forEach((file) => {
+                formData.append("documents", file);
+            });
+
+            setMessage("Uploading and indexing documents...", "loading");
+
+            try {
+                const response = await fetch("/upload", {
+                    method: "POST",
+                    body: formData
+                });
+
+                const data = await response.json();
+                updateDataStatus(data);
+
+                if (!response.ok) {
+                    setMessage(data.error || "Upload failed.", "error");
+                    return;
+                }
+
+                clearResults();
+                setMessage(data.message || "Documents uploaded and indexed.", "success");
+                documentInput.value = "";
+            } catch (error) {
+                setMessage("Unable to upload documents. Is Flask running?", "error");
+            }
+        });
 
         searchForm.addEventListener("submit", async (event) => {
             event.preventDefault();

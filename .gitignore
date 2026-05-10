@@ -2,5 +2,6 @@
 __pycache__/
 *.pyc
 chroma_db/
+uploaded_documents/
 .DS_Store
 ~$*.xlsx

@@ -6,7 +6,7 @@ app_port: 7860
 
 # Excel RAG Semantic Search
 
-A small Flask web app that reads rows from `uploads/data.xlsx` or a Google Sheet, embeds them with `sentence-transformers`, stores them in ChromaDB, and retrieves the most relevant rows for a user search query.
+A small Flask web app that lets users upload documents, embeds their contents with `sentence-transformers`, stores them in ChromaDB, and retrieves the most relevant information for a user search query. It can also fall back to Google Sheets or `uploads/data.xlsx`.
 
 ## Folder Structure
 
@@ -76,7 +76,7 @@ http://127.0.0.1:5000
 
 ## How It Works
 
-1. Pandas reads Google Sheets CSV when `GOOGLE_SHEET_CSV_URL` is set; otherwise it reads `uploads/data.xlsx`.
+1. Users upload documents from the web page, or the app reads Google Sheets/Excel when no documents are uploaded.
 2. Each row is converted into searchable text like `Column: value | Column: value`.
 3. `all-MiniLM-L6-v2` creates embeddings for every row.
 4. ChromaDB stores the row text, metadata, and embeddings in `chroma_db/`.
@@ -87,6 +87,7 @@ http://127.0.0.1:5000
 
 The app handles:
 
+- document uploads for CSV, XLSX, TXT, Markdown, and PDF
 - missing `uploads/data.xlsx`
 - invalid or unreachable Google Sheets URL
 - an empty search query
@@ -98,6 +99,7 @@ The app handles:
 
 - The first startup can take longer because the embedding model may need to download.
 - Local Excel changes and Google Sheets changes are checked before each search. ChromaDB is rebuilt only when the spreadsheet content changes.
+- Uploaded documents take priority over Google Sheets/Excel. If documents are uploaded, searches run against the uploaded documents.
 
 ## Deploy On Render
 

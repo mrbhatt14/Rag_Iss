@@ -108,6 +108,11 @@ h1 {
     background: var(--info-bg);
 }
 
+.upload-form {
+    margin-bottom: 22px;
+}
+
+.upload-form label,
 .search-form label {
     display: block;
     margin-bottom: 8px;
@@ -116,10 +121,17 @@ h1 {
     font-weight: 750;
 }
 
+.upload-row,
 .search-row {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 12px;
+}
+
+.upload-hint {
+    margin: 8px 0 0;
+    color: var(--muted);
+    font-size: 0.88rem;
 }
 
 input {

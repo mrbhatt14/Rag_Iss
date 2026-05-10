@@ -14,10 +14,12 @@ os.environ.setdefault("MKL_NUM_THREADS", "1")
 
 import pandas as pd
 from flask import Flask, jsonify, render_template, request
+from werkzeug.utils import secure_filename
 
 
 BASE_DIR = Path(__file__).resolve().parent
 EXCEL_PATH = BASE_DIR / "uploads" / "data.xlsx"
+DOCUMENT_UPLOAD_DIR = Path(os.environ.get("DOCUMENT_UPLOAD_DIR", BASE_DIR / "uploaded_documents"))
 DEFAULT_GOOGLE_SHEET_URL = (
     "https://docs.google.com/spreadsheets/d/"
     "1nwSzIkL-8Dmatx-dIS5zETsgZ4GPzaOJXguVDRqNbgQ/edit?usp=sharing"
@@ -33,6 +35,7 @@ CANDIDATE_LIMIT = 5
 RESULT_LIMIT = 5
 MIN_RELEVANCE_SCORE = 0.45
 MIN_TOKEN_LENGTH = 3
+ALLOWED_DOCUMENT_EXTENSIONS = {".csv", ".xlsx", ".txt", ".md", ".pdf"}
 
 STOP_WORDS = {
     "all",
@@ -74,8 +77,10 @@ STOP_WORDS = {
 
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 excel_rows_cache: list[dict[str, Any]] = []
 data_source_signature: Optional[str] = None
+uploaded_document_signature: Optional[str] = None
 embedding_model: Any = None
 chroma_client: Any = None
 
@@ -128,7 +133,27 @@ def row_to_searchable_text(row: pd.Series) -> str:
 
 def get_data_source_name() -> str:
     """Return the configured spreadsheet source name for status messages."""
+    if has_uploaded_documents():
+        return "uploaded documents"
+
     return "Google Sheet" if GOOGLE_SHEET_CSV_URL else "Excel file"
+
+
+def has_uploaded_documents() -> bool:
+    """Return True when users have uploaded supported documents."""
+    return bool(get_uploaded_document_paths())
+
+
+def get_uploaded_document_paths() -> list[Path]:
+    """List supported uploaded documents."""
+    if not DOCUMENT_UPLOAD_DIR.exists():
+        return []
+
+    return sorted(
+        path
+        for path in DOCUMENT_UPLOAD_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in ALLOWED_DOCUMENT_EXTENSIONS
+    )
 
 
 def google_sheet_url_to_csv_url(url: str) -> str:
@@ -160,6 +185,17 @@ def dataframe_signature(dataframe: pd.DataFrame) -> str:
     columns = "|".join(str(column) for column in normalized.columns)
 
     return f"{columns}:{row_hash_total}:{len(normalized)}"
+
+
+def uploaded_documents_signature() -> str:
+    """Build a signature from uploaded document names, sizes, and timestamps."""
+    parts = []
+
+    for path in get_uploaded_document_paths():
+        stat = path.stat()
+        parts.append(f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}")
+
+    return "|".join(parts)
 
 
 def extract_search_tokens(text: str) -> set[str]:
@@ -231,6 +267,88 @@ def load_spreadsheet_dataframe() -> pd.DataFrame:
         )
 
     return pd.read_excel(EXCEL_PATH)
+
+
+def text_to_document_rows(text: str, source_name: str) -> list[dict[str, Any]]:
+    """Split plain document text into searchable chunks."""
+    cleaned_text = re.sub(r"\s+", " ", text).strip()
+
+    if not cleaned_text:
+        return []
+
+    chunk_size = 900
+    overlap = 120
+    rows = []
+    start = 0
+    chunk_index = 0
+
+    while start < len(cleaned_text):
+        chunk = cleaned_text[start : start + chunk_size].strip()
+
+        if chunk:
+            rows.append(
+                {
+                    "id": f"{source_name}-{chunk_index}",
+                    "text": chunk,
+                    "metadata": {
+                        "Source": source_name,
+                        "Type": "document",
+                        "Chunk": str(chunk_index + 1),
+                        "Content": chunk,
+                    },
+                }
+            )
+
+        chunk_index += 1
+        start += chunk_size - overlap
+
+    return rows
+
+
+def dataframe_to_document_rows(dataframe: pd.DataFrame, source_name: str) -> list[dict[str, Any]]:
+    """Convert table-like uploaded documents into searchable rows."""
+    rows = dataframe_to_rows(dataframe)
+
+    for index, row in enumerate(rows):
+        row["id"] = f"{source_name}-{index}"
+        row["metadata"] = {
+            "Source": source_name,
+            **row["metadata"],
+        }
+
+    return rows
+
+
+def read_pdf_text(path: Path) -> str:
+    """Extract text from a PDF using pypdf when available."""
+    try:
+        from pypdf import PdfReader
+    except ImportError as error:
+        raise RuntimeError("PDF support requires pypdf to be installed.") from error
+
+    reader = PdfReader(str(path))
+    page_text = [page.extract_text() or "" for page in reader.pages]
+
+    return "\n".join(page_text)
+
+
+def load_uploaded_document_rows() -> list[dict[str, Any]]:
+    """Load supported uploaded documents into ChromaDB-ready records."""
+    rows = []
+
+    for path in get_uploaded_document_paths():
+        suffix = path.suffix.lower()
+
+        if suffix == ".csv":
+            rows.extend(dataframe_to_document_rows(pd.read_csv(path), path.name))
+        elif suffix == ".xlsx":
+            rows.extend(dataframe_to_document_rows(pd.read_excel(path), path.name))
+        elif suffix in {".txt", ".md"}:
+            rows.extend(text_to_document_rows(path.read_text(encoding="utf-8"), path.name))
+        elif suffix == ".pdf":
+            rows.extend(text_to_document_rows(read_pdf_text(path), path.name))
+
+    return rows
 
 
 def dataframe_to_rows(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
@@ -305,7 +423,28 @@ last_excel_modified_at = EXCEL_PATH.stat().st_mtime if EXCEL_PATH.exists() else 
 def refresh_vector_store_if_needed() -> tuple[bool, str]:
     """Rebuild ChromaDB when the spreadsheet changes while Flask is running."""
     global data_source_signature, excel_rows_cache
+    global uploaded_document_signature
     global last_excel_modified_at, startup_message, vector_store_ready
+
+    if has_uploaded_documents():
+        signature = uploaded_documents_signature()
+
+        if signature == uploaded_document_signature:
+            return vector_store_ready, startup_message
+
+        rows = load_uploaded_document_rows()
+        uploaded_document_signature = signature
+        excel_rows_cache = rows
+        rebuild_collection(rows)
+
+        if not rows:
+            vector_store_ready = False
+            startup_message = "Uploaded documents do not contain searchable text."
+        else:
+            vector_store_ready = True
+            startup_message = f"Loaded {len(get_uploaded_document_paths())} uploaded document(s)."
+
+        return vector_store_ready, startup_message
 
     if GOOGLE_SHEET_CSV_URL:
         rows, signature = load_spreadsheet_rows()
@@ -364,6 +503,66 @@ def homepage():
         "index.html",
         vector_store_ready=vector_store_ready,
         startup_message=startup_message,
+    )
+
+
+@app.route("/upload", methods=["POST"])
+def upload_documents():
+    """Upload documents and rebuild the vector store from uploaded content."""
+    files = request.files.getlist("documents")
+
+    if not files or all(not file.filename for file in files):
+        return jsonify({"error": "Please choose at least one document to upload."}), 400
+
+    DOCUMENT_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    uploaded_files = []
+
+    for file in files:
+        if not file.filename:
+            continue
+
+        original_filename = secure_filename(file.filename)
+        suffix = Path(original_filename).suffix.lower()
+
+        if suffix not in ALLOWED_DOCUMENT_EXTENSIONS:
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            f"Unsupported file type: {original_filename}. "
+                            "Upload CSV, XLSX, TXT, Markdown, or PDF files."
+                        )
+                    }
+                ),
+                400,
+            )
+
+        file_path = DOCUMENT_UPLOAD_DIR / original_filename
+        file.save(file_path)
+        uploaded_files.append(original_filename)
+
+    try:
+        ready, message = refresh_vector_store_if_needed()
+    except Exception as error:
+        message = f"Upload succeeded, but indexing failed: {error}"
+
+        return (
+            jsonify(
+                {
+                    "error": message,
+                    "status": message,
+                    "status_ready": False,
+                }
+            ),
+            500,
+        )
+
+    return jsonify(
+        {
+            "message": f"Uploaded {len(uploaded_files)} file(s): {', '.join(uploaded_files)}",
+            "status": message,
+            "status_ready": ready,
+        }
     )
 
 

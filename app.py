@@ -759,6 +759,44 @@ def upload_documents():
     )
 
 
+@app.route("/uploads/clear", methods=["POST"])
+def clear_uploaded_documents():
+    """Remove uploaded documents and return to the spreadsheet data source."""
+    global uploaded_document_signature
+
+    removed_count = 0
+
+    for path in get_uploaded_document_paths():
+        path.unlink()
+        removed_count += 1
+
+    uploaded_document_signature = None
+
+    try:
+        ready, message = refresh_vector_store_if_needed()
+    except Exception as error:
+        message = f"Uploaded documents were removed, but re-indexing failed: {error}"
+
+        return (
+            jsonify(
+                {
+                    "error": message,
+                    "status": message,
+                    "status_ready": False,
+                }
+            ),
+            500,
+        )
+
+    return jsonify(
+        {
+            "message": f"Removed {removed_count} uploaded document(s).",
+            "status": message,
+            "status_ready": ready,
+        }
+    )
+
+
 @app.route("/search", methods=["POST"])
 def search():
     """Receive a query, run semantic search, and return relevant Excel rows."""

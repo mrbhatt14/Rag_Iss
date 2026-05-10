@@ -134,6 +134,28 @@ h1 {
     font-size: 0.88rem;
 }
 
+.data-source-note {
+    margin-bottom: 22px;
+    padding: 14px;
+    border: 1px solid #d9e2f1;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.data-source-note strong {
+    display: block;
+    margin-bottom: 6px;
+    color: #344054;
+    font-size: 0.9rem;
+}
+
+.data-source-note p {
+    margin: 0 0 12px;
+    color: var(--muted);
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+
 input {
     width: 100%;
     min-height: 52px;
@@ -164,6 +186,19 @@ button {
 
 button:hover {
     background: var(--primary-dark);
+}
+
+.secondary-button {
+    min-height: 42px;
+    padding: 0 16px;
+    color: #344054;
+    background: #ffffff;
+    border: 1px solid #c7cfdd;
+}
+
+.secondary-button:hover {
+    color: var(--primary);
+    background: #eef4ff;
 }
 
 .results-panel {

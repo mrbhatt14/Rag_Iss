@@ -37,6 +37,17 @@
                 <p class="upload-hint">Supported formats: CSV, XLSX, TXT, Markdown, PDF.</p>
             </form>
 
+            <div class="data-source-note">
+                <strong>Data source note</strong>
+                <p>
+                    Uploaded documents are searched first. To use the configured Google Sheet
+                    or local Excel file, remove uploaded documents and search again.
+                </p>
+                <button id="clearUploadsButton" type="button" class="secondary-button">
+                    Remove uploaded documents
+                </button>
+            </div>
+
             <form id="searchForm" class="search-form">
                 <label for="queryInput">Search query</label>
                 <div class="search-row">
@@ -69,6 +80,7 @@
         const documentInput = document.getElementById("documentInput");
         const searchForm = document.getElementById("searchForm");
         const queryInput = document.getElementById("queryInput");
+        const clearUploadsButton = document.getElementById("clearUploadsButton");
         const messageBox = document.getElementById("messageBox");
         const resultsContainer = document.getElementById("resultsContainer");
         const resultCount = document.getElementById("resultCount");
@@ -275,6 +287,29 @@
                 documentInput.value = "";
             } catch (error) {
                 setMessage("Unable to upload documents. Is Flask running?", "error");
+            }
+        });
+
+        clearUploadsButton.addEventListener("click", async () => {
+            setMessage("Removing uploaded documents and refreshing the data source...", "loading");
+
+            try {
+                const response = await fetch("/uploads/clear", {
+                    method: "POST"
+                });
+
+                const data = await response.json();
+                updateDataStatus(data);
+                clearResults();
+
+                if (!response.ok) {
+                    setMessage(data.error || "Could not remove uploaded documents.", "error");
+                    return;
+                }
+
+                setMessage(data.message || "Uploaded documents removed.", "success");
+            } catch (error) {
+                setMessage("Unable to remove uploaded documents. Is Flask running?", "error");
             }
         });
 

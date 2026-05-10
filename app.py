@@ -261,17 +261,26 @@ def extract_direct_answer(query: str, results: list[dict[str, Any]]) -> Optional
         {
             "terms": {"email", "mail", "e-mail"},
             "label": "Email",
-            "pattern": r"[\w.\-+]+@[\w.\-]+\.\w+",
+            "patterns": [r"[\w.\-+]+@[\w.\-]+\.\w+"],
         },
         {
             "terms": {"phone", "mobile", "contact", "number"},
             "label": "Phone",
-            "pattern": r"(?:\+?\d[\d\s().-]{8,}\d)",
+            "patterns": [r"(?:\+?\d[\d\s().-]{8,}\d)"],
         },
         {
             "terms": {"name", "candidate"},
             "label": "Name",
-            "pattern": r"\b[A-Z][A-Z]+(?:\s+[A-Z][A-Z]+){1,3}\b",
+            "patterns": [r"\b[A-Z][A-Z]+(?:\s+[A-Z][A-Z]+){1,3}\b"],
+        },
+        {
+            "terms": {"university", "college", "education", "study", "studies", "studying", "school"},
+            "label": "University",
+            "patterns": [
+                r"\bat\s+([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}\s+University)\b",
+                r"\b([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+){0,3}\s+University)\b",
+                r"\b(University of [A-Z][A-Za-z]+(?:\s+(?:and|And|&|[A-Z][A-Za-z]+)){0,6})\b",
+            ],
         },
     ]
 
@@ -280,16 +289,23 @@ def extract_direct_answer(query: str, results: list[dict[str, Any]]) -> Optional
             continue
 
         for result in results:
-            match = re.search(extractor["pattern"], result["text"])
+            match = None
+
+            for pattern in extractor["patterns"]:
+                match = re.search(pattern, result["text"])
+
+                if match:
+                    break
 
             if not match:
                 continue
 
             metadata = result.get("row", {})
+            value = match.group(1) if match.lastindex else match.group(0)
 
             return {
                 "label": extractor["label"],
-                "value": match.group(0).strip(),
+                "value": value.strip(),
                 "source": str(metadata.get("Source", "")),
             }
 

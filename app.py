@@ -254,6 +254,85 @@ def search_exact_rows(query_tokens: set[str]) -> list[dict[str, Any]]:
     return exact_results
 
 
+def split_answer_candidates(text: str) -> list[str]:
+    """Split document text into short answer-like candidates."""
+    heading_pattern = (
+        r"\b(PROFILE|SUMMARY|EXPERIENCE|EDUCATION|PROJECTS|SKILLS|"
+        r"CERTIFICATIONS|ACHIEVEMENTS|LEADERSHIP|ACTIVITIES)\b"
+    )
+    text_with_breaks = re.sub(heading_pattern, r". \1 ", text)
+    pieces = re.split(r"(?<=[.!?])\s+", text_with_breaks)
+
+    return [
+        re.sub(r"\s+", " ", piece).strip(" .")
+        for piece in pieces
+        if len(piece.strip()) >= 25
+    ]
+
+
+def shorten_answer_text(text: str, query_tokens: set[str], limit: int = 320) -> str:
+    """Keep direct answers readable when a matched resume section is long."""
+    clean_text = re.sub(r"\s+", " ", text).strip()
+
+    if len(clean_text) <= limit:
+        return clean_text
+
+    lower_text = clean_text.lower()
+    token_positions = [
+        lower_text.find(token)
+        for token in query_tokens
+        if lower_text.find(token) >= 0
+    ]
+    first_match = min(token_positions) if token_positions else 0
+    start = max(0, first_match - 80)
+    end = min(len(clean_text), start + limit)
+    shortened = clean_text[start:end].strip()
+
+    if start > 0:
+        shortened = f"...{shortened}"
+
+    if end < len(clean_text):
+        shortened = f"{shortened}..."
+
+    return shortened
+
+
+def extract_best_text_answer(query: str, results: list[dict[str, Any]]) -> Optional[dict[str, str]]:
+    """Return the best sentence-level answer when no structured extractor applies."""
+    query_tokens = extract_search_tokens(query)
+
+    if not query_tokens:
+        return None
+
+    best_match = None
+
+    for result_index, result in enumerate(results):
+        for candidate in split_answer_candidates(result["text"]):
+            candidate_tokens = set(re.findall(r"[a-z0-9]+", candidate.lower()))
+            overlap = query_tokens.intersection(candidate_tokens)
+
+            if not overlap:
+                continue
+
+            score = (len(overlap) * 100) - result_index - (len(candidate) / 1000)
+
+            if not best_match or score > best_match["score"]:
+                best_match = {
+                    "score": score,
+                    "text": candidate,
+                    "source": str(result.get("row", {}).get("Source", "")),
+                }
+
+    if not best_match:
+        return None
+
+    return {
+        "label": "Answer",
+        "value": shorten_answer_text(best_match["text"], query_tokens),
+        "source": best_match["source"],
+    }
+
+
 def extract_direct_answer(query: str, results: list[dict[str, Any]]) -> Optional[dict[str, str]]:
     """Extract common direct answers from retrieved document chunks."""
     query_text = query.lower()
@@ -309,7 +388,7 @@ def extract_direct_answer(query: str, results: list[dict[str, Any]]) -> Optional
                 "source": str(metadata.get("Source", "")),
             }
 
-    return None
+    return extract_best_text_answer(query, results)
 
 
 def load_spreadsheet_dataframe() -> pd.DataFrame:

@@ -279,32 +279,45 @@ def text_to_document_rows(text: str, source_name: str) -> list[dict[str, Any]]:
         return []
 
     chunk_size = 900
-    overlap = 120
+    overlap_words = 25
+    words = cleaned_text.split()
     rows = []
-    start = 0
+    chunk_words = []
     chunk_index = 0
 
-    while start < len(cleaned_text):
-        chunk = cleaned_text[start : start + chunk_size].strip()
+    for word in words:
+        next_chunk = " ".join([*chunk_words, word])
 
-        if chunk:
+        if chunk_words and len(next_chunk) > chunk_size:
+            chunk = " ".join(chunk_words)
             rows.append(
-                {
-                    "id": f"{source_name}-{chunk_index}",
-                    "text": chunk,
-                    "metadata": {
-                        "Source": source_name,
-                        "Type": "document",
-                        "Chunk": str(chunk_index + 1),
-                        "Content": chunk,
-                    },
-                }
+                build_document_row(source_name, chunk_index, chunk)
             )
 
-        chunk_index += 1
-        start += chunk_size - overlap
+            chunk_index += 1
+            chunk_words = chunk_words[-overlap_words:]
+
+        chunk_words.append(word)
+
+    if chunk_words:
+        chunk = " ".join(chunk_words)
+        rows.append(build_document_row(source_name, chunk_index, chunk))
 
     return rows
+
+
+def build_document_row(source_name: str, chunk_index: int, chunk: str) -> dict[str, Any]:
+    """Create one searchable document chunk with display metadata."""
+    return {
+        "id": f"{source_name}-{chunk_index}",
+        "text": chunk,
+        "metadata": {
+            "Source": source_name,
+            "Type": "document",
+            "Chunk": str(chunk_index + 1),
+            "Content": chunk,
+        },
+    }
 
 
 def dataframe_to_document_rows(dataframe: pd.DataFrame, source_name: str) -> list[dict[str, Any]]:

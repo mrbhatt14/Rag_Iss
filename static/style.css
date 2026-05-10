@@ -225,6 +225,29 @@ button:hover {
     line-height: 1.55;
 }
 
+.document-excerpt {
+    margin-bottom: 14px;
+    color: #344054;
+}
+
+.result-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.result-meta span {
+    max-width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #d9e2f1;
+    border-radius: 999px;
+    background: #f8fafc;
+    color: #344054;
+    font-size: 0.84rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
 .result-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

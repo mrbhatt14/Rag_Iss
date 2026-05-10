@@ -100,6 +100,8 @@
             resultCount.textContent = `${results.length} result${results.length === 1 ? "" : "s"}`;
 
             results.forEach((result, index) => {
+                const row = result.row || {};
+                const isDocumentResult = String(row.Type || "").toLowerCase() === "document";
                 const card = document.createElement("article");
                 card.className = "result-card";
 
@@ -116,32 +118,55 @@
                 title.appendChild(scoreText);
 
                 const text = document.createElement("p");
-                text.className = "result-text";
+                text.className = isDocumentResult ? "result-text document-excerpt" : "result-text";
                 text.textContent = result.text;
-
-                const table = document.createElement("div");
-                table.className = "result-grid";
-
-                Object.entries(result.row)
-                    .filter(([key]) => key.toLowerCase() !== "content")
-                    .forEach(([key, value]) => {
-                        const item = document.createElement("div");
-                        item.className = "result-field";
-
-                        const fieldLabel = document.createElement("span");
-                        fieldLabel.textContent = key;
-
-                        const fieldValue = document.createElement("p");
-                        fieldValue.textContent = value;
-
-                        item.appendChild(fieldLabel);
-                        item.appendChild(fieldValue);
-                        table.appendChild(item);
-                    });
 
                 card.appendChild(title);
                 card.appendChild(text);
-                card.appendChild(table);
+
+                if (isDocumentResult) {
+                    const meta = document.createElement("div");
+                    meta.className = "result-meta";
+
+                    [
+                        ["Source", row.Source],
+                        ["Chunk", row.Chunk],
+                        ["Type", row.Type],
+                    ].forEach(([label, value]) => {
+                        if (!value) {
+                            return;
+                        }
+
+                        const pill = document.createElement("span");
+                        pill.textContent = `${label}: ${value}`;
+                        meta.appendChild(pill);
+                    });
+
+                    card.appendChild(meta);
+                } else {
+                    const table = document.createElement("div");
+                    table.className = "result-grid";
+
+                    Object.entries(row)
+                        .filter(([key]) => key.toLowerCase() !== "content")
+                        .forEach(([key, value]) => {
+                            const item = document.createElement("div");
+                            item.className = "result-field";
+
+                            const fieldLabel = document.createElement("span");
+                            fieldLabel.textContent = key;
+
+                            const fieldValue = document.createElement("p");
+                            fieldValue.textContent = value;
+
+                            item.appendChild(fieldLabel);
+                            item.appendChild(fieldValue);
+                            table.appendChild(item);
+                        });
+
+                    card.appendChild(table);
+                }
+
                 resultsContainer.appendChild(card);
             });
         }

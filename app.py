@@ -34,6 +34,7 @@ EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 CANDIDATE_LIMIT = 5
 RESULT_LIMIT = 5
 MIN_RELEVANCE_SCORE = 0.45
+DOCUMENT_MIN_RELEVANCE_SCORE = 0.0
 MIN_TOKEN_LENGTH = 3
 ALLOWED_DOCUMENT_EXTENSIONS = {".csv", ".xlsx", ".txt", ".md", ".pdf"}
 
@@ -656,9 +657,15 @@ def search():
             )
 
         results = []
+        min_relevance_score = (
+            DOCUMENT_MIN_RELEVANCE_SCORE
+            if using_uploaded_documents
+            else MIN_RELEVANCE_SCORE
+        )
+
         for document, metadata, distance in zip(documents, metadatas, distances):
-            # ChromaDB returns the nearest rows even when they are weak matches.
-            # This score keeps the UI focused on rows that are actually relevant.
+            # Spreadsheet rows use a stricter cutoff because exact column matches are available.
+            # Uploaded documents return the top semantic chunks from ChromaDB directly.
             score = round(1 / (1 + float(distance)), 4)
             has_exact_match = (
                 False
@@ -666,7 +673,7 @@ def search():
                 else metadata_contains_query_token(metadata, query_tokens)
             )
 
-            if score < MIN_RELEVANCE_SCORE and not has_exact_match:
+            if score < min_relevance_score and not has_exact_match:
                 continue
 
             results.append(

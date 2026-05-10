@@ -196,6 +196,37 @@ button:hover {
     margin-top: 16px;
 }
 
+.direct-answer {
+    border: 1px solid #b7e4cc;
+    border-radius: 8px;
+    padding: 18px;
+    background: #ecfdf3;
+}
+
+.direct-answer span {
+    display: block;
+    margin-bottom: 6px;
+    color: #067647;
+    font-size: 0.8rem;
+    font-weight: 850;
+    text-transform: uppercase;
+}
+
+.direct-answer strong {
+    display: block;
+    color: #101828;
+    font-size: 1.25rem;
+    overflow-wrap: anywhere;
+}
+
+.direct-answer p {
+    margin: 8px 0 0;
+    color: #475467;
+    font-size: 0.9rem;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
 .result-card {
     border: 1px solid var(--line);
     border-radius: 8px;

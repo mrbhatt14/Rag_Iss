@@ -254,6 +254,48 @@ def search_exact_rows(query_tokens: set[str]) -> list[dict[str, Any]]:
     return exact_results
 
 
+def extract_direct_answer(query: str, results: list[dict[str, Any]]) -> Optional[dict[str, str]]:
+    """Extract common direct answers from retrieved document chunks."""
+    query_text = query.lower()
+    extractors = [
+        {
+            "terms": {"email", "mail", "e-mail"},
+            "label": "Email",
+            "pattern": r"[\w.\-+]+@[\w.\-]+\.\w+",
+        },
+        {
+            "terms": {"phone", "mobile", "contact", "number"},
+            "label": "Phone",
+            "pattern": r"(?:\+?\d[\d\s().-]{8,}\d)",
+        },
+        {
+            "terms": {"name", "candidate"},
+            "label": "Name",
+            "pattern": r"\b[A-Z][A-Z]+(?:\s+[A-Z][A-Z]+){1,3}\b",
+        },
+    ]
+
+    for extractor in extractors:
+        if not any(term in query_text for term in extractor["terms"]):
+            continue
+
+        for result in results:
+            match = re.search(extractor["pattern"], result["text"])
+
+            if not match:
+                continue
+
+            metadata = result.get("row", {})
+
+            return {
+                "label": extractor["label"],
+                "value": match.group(0).strip(),
+                "source": str(metadata.get("Source", "")),
+            }
+
+    return None
+
+
 def load_spreadsheet_dataframe() -> pd.DataFrame:
     """Read data from Google Sheets CSV when configured, otherwise Excel."""
     if GOOGLE_SHEET_CSV_URL:
@@ -706,6 +748,11 @@ def search():
 
         result_limit = DOCUMENT_RESULT_LIMIT if using_uploaded_documents else RESULT_LIMIT
         results = results[:result_limit]
+        direct_answer = (
+            extract_direct_answer(query, results)
+            if using_uploaded_documents
+            else None
+        )
 
         for result in results:
             result.pop("has_exact_match", None)
@@ -722,6 +769,7 @@ def search():
 
         return jsonify(
             {
+                "direct_answer": direct_answer,
                 "results": results,
                 "status": message,
                 "status_ready": ready,

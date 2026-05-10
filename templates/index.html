@@ -84,6 +84,32 @@
             resultCount.textContent = "No results";
         }
 
+        function renderDirectAnswer(answer) {
+            if (!answer) {
+                return;
+            }
+
+            const card = document.createElement("article");
+            card.className = "direct-answer";
+
+            const label = document.createElement("span");
+            label.textContent = answer.label;
+
+            const value = document.createElement("strong");
+            value.textContent = answer.value;
+
+            card.appendChild(label);
+            card.appendChild(value);
+
+            if (answer.source) {
+                const source = document.createElement("p");
+                source.textContent = `Source: ${answer.source}`;
+                card.appendChild(source);
+            }
+
+            resultsContainer.prepend(card);
+        }
+
         function updateDataStatus(data) {
             if (!data.status) {
                 return;
@@ -246,6 +272,7 @@
 
                 setMessage("Most relevant results from your indexed content:", "success");
                 renderResults(data.results);
+                renderDirectAnswer(data.direct_answer);
             } catch (error) {
                 setMessage("Unable to reach the search service. Is Flask running?", "error");
             }

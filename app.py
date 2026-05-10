@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
@@ -219,7 +220,10 @@ def load_spreadsheet_dataframe() -> pd.DataFrame:
     """Read data from Google Sheets CSV when configured, otherwise Excel."""
     if GOOGLE_SHEET_CSV_URL:
         csv_url = google_sheet_url_to_csv_url(GOOGLE_SHEET_CSV_URL)
-        return pd.read_csv(csv_url)
+        separator = "&" if "?" in csv_url else "?"
+        fresh_csv_url = f"{csv_url}{separator}_cache_bust={time.time_ns()}"
+
+        return pd.read_csv(fresh_csv_url)
 
     if not EXCEL_PATH.exists():
         raise FileNotFoundError(

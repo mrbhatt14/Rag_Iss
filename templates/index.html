@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
+    <div id="toastContainer" class="toast-container" aria-live="polite"></div>
     <main class="page-shell">
         <section class="search-panel">
             <p class="eyebrow">RAG Retrieval - By Shivam Bhatt </p>
@@ -44,8 +45,8 @@
                         accept=".csv,.xlsx,.txt,.md,.pdf"
                     >
                     <div class="upload-icon" aria-hidden="true">↑</div>
-                    <strong>Drop files here</strong>
-                    <p>PDF · TXT · CSV · XLSX · MD <button id="browseButton" type="button">browse</button></p>
+                    <strong id="dropZoneTitle">Drop files here</strong>
+                    <p id="dropZoneHint">PDF · TXT · CSV · XLSX · MD <button id="browseButton" type="button">browse</button></p>
                 </div>
 
                 <div class="upload-actions">
@@ -103,11 +104,14 @@
         const uploadForm = document.getElementById("uploadForm");
         const documentInput = document.getElementById("documentInput");
         const dropZone = document.getElementById("dropZone");
+        const dropZoneTitle = document.getElementById("dropZoneTitle");
+        const dropZoneHint = document.getElementById("dropZoneHint");
         const browseButton = document.getElementById("browseButton");
         const selectedFileCount = document.getElementById("selectedFileCount");
         const documentStat = document.getElementById("documentStat");
         const chunkStat = document.getElementById("chunkStat");
         const documentList = document.getElementById("documentList");
+        const toastContainer = document.getElementById("toastContainer");
         const searchForm = document.getElementById("searchForm");
         const queryInput = document.getElementById("queryInput");
         const clearUploadsButton = document.getElementById("clearUploadsButton");
@@ -126,6 +130,17 @@
             resultCount.textContent = "No results";
         }
 
+        function showToast(message, type = "info") {
+            const toast = document.createElement("div");
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            toastContainer.appendChild(toast);
+
+            window.setTimeout(() => {
+                toast.remove();
+            }, 4200);
+        }
+
         function formatFileSize(sizeKb) {
             if (sizeKb >= 1024) {
                 return `${(sizeKb / 1024).toFixed(1)} MB`;
@@ -139,6 +154,19 @@
             selectedFileCount.textContent = count
                 ? `${count} file${count === 1 ? "" : "s"} selected`
                 : "No files selected";
+
+            if (!count) {
+                dropZoneTitle.textContent = "Drop files here";
+                dropZoneHint.innerHTML = 'PDF · TXT · CSV · XLSX · MD <button id="browseButton" type="button">browse</button>';
+                document.getElementById("browseButton").addEventListener("click", () => {
+                    documentInput.click();
+                });
+                return;
+            }
+
+            const names = Array.from(documentInput.files).map((file) => file.name).join(", ");
+            dropZoneTitle.textContent = count === 1 ? "Selected file" : "Selected files";
+            dropZoneHint.textContent = names;
         }
 
         function renderUploadSummary(summary) {
@@ -345,7 +373,7 @@
             event.preventDefault();
 
             if (!documentInput.files.length) {
-                setMessage("Please choose at least one document to upload.", "error");
+                showToast("Please choose at least one document to upload.", "error");
                 return;
             }
 
@@ -355,7 +383,7 @@
                 formData.append("documents", file);
             });
 
-            setMessage("Uploading and indexing documents...", "loading");
+            showToast("Uploading and indexing documents...", "info");
 
             try {
                 const response = await fetch("/upload", {
@@ -366,22 +394,34 @@
                 const data = await response.json();
                 updateDataStatus(data);
 
+                if (data.upload_summary) {
+                    renderUploadSummary(data.upload_summary);
+                }
+
                 if (!response.ok) {
-                    setMessage(data.error || "Upload failed.", "error");
+                    showToast(data.error || "Upload failed.", "error");
                     return;
                 }
 
                 clearResults();
-                setMessage(data.message || "Documents uploaded and indexed.", "success");
+                setMessage("Enter a query to retrieve relevant information from your indexed content.", "info");
+                showToast(data.message || "Documents uploaded and indexed.", "success");
                 documentInput.value = "";
                 updateSelectedFiles();
-                loadUploadSummary();
             } catch (error) {
-                setMessage("Unable to upload documents. Is Flask running?", "error");
+                showToast("Unable to upload documents. Is Flask running?", "error");
             }
         });
 
         browseButton.addEventListener("click", () => {
+            documentInput.click();
+        });
+
+        dropZone.addEventListener("click", (event) => {
+            if (event.target.closest("button")) {
+                return;
+            }
+
             documentInput.click();
         });
 
@@ -404,7 +444,7 @@
         });
 
         clearUploadsButton.addEventListener("click", async () => {
-            setMessage("Removing uploaded documents and refreshing the data source...", "loading");
+            showToast("Removing uploaded documents and refreshing the data source...", "info");
 
             try {
                 const response = await fetch("/uploads/clear", {
@@ -413,17 +453,21 @@
 
                 const data = await response.json();
                 updateDataStatus(data);
+
+                if (data.upload_summary) {
+                    renderUploadSummary(data.upload_summary);
+                }
                 clearResults();
 
                 if (!response.ok) {
-                    setMessage(data.error || "Could not remove uploaded documents.", "error");
+                    showToast(data.error || "Could not remove uploaded documents.", "error");
                     return;
                 }
 
-                setMessage(data.message || "Uploaded documents removed.", "success");
-                loadUploadSummary();
+                setMessage("Enter a query to retrieve relevant information from your indexed content.", "info");
+                showToast(data.message || "Uploaded documents removed.", "success");
             } catch (error) {
-                setMessage("Unable to remove uploaded documents. Is Flask running?", "error");
+                showToast("Unable to remove uploaded documents. Is Flask running?", "error");
             }
         });
 

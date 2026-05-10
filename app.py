@@ -781,6 +781,7 @@ def upload_documents():
     return jsonify(
         {
             "message": f"Uploaded {len(uploaded_files)} file(s): {', '.join(uploaded_files)}",
+            "upload_summary": uploaded_documents_summary(),
             "status": message,
             "status_ready": ready,
         }
@@ -841,6 +842,7 @@ def clear_uploaded_documents():
     return jsonify(
         {
             "message": f"Removed {removed_count} uploaded document(s).",
+            "upload_summary": uploaded_documents_summary(),
             "status": message,
             "status_ready": ready,
         }

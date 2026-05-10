@@ -5,3 +5,5 @@ chroma_db/
 uploaded_documents/
 .DS_Store
 ~$*.xlsx
+# Ignore uploaded Excel workbooks (keep them local)
+uploads/*.xlsx

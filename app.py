@@ -33,6 +33,7 @@ COLLECTION_NAME = "excel_rows"
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 CANDIDATE_LIMIT = 5
 RESULT_LIMIT = 5
+DOCUMENT_RESULT_LIMIT = 3
 MIN_RELEVANCE_SCORE = 0.45
 DOCUMENT_MIN_RELEVANCE_SCORE = 0.0
 MIN_TOKEN_LENGTH = 3
@@ -690,7 +691,8 @@ def search():
         if exact_results and not using_uploaded_documents:
             results = exact_results
 
-        results = results[:RESULT_LIMIT]
+        result_limit = DOCUMENT_RESULT_LIMIT if using_uploaded_documents else RESULT_LIMIT
+        results = results[:result_limit]
 
         for result in results:
             result.pop("has_exact_match", None)

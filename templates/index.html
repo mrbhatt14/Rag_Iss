@@ -17,12 +17,6 @@
                 searches ChromaDB, and returns the most relevant document or spreadsheet results.
             </p>
 
-            {% if not vector_store_ready %}
-                <div id="dataStatus" class="status status-error">{{ startup_message }}</div>
-            {% else %}
-                <div id="dataStatus" class="status status-ready">{{ startup_message }}</div>
-            {% endif %}
-
             <form id="uploadForm" class="upload-form">
                 <div class="upload-stats" aria-live="polite">
                     <div>
@@ -118,7 +112,6 @@
         const messageBox = document.getElementById("messageBox");
         const resultsContainer = document.getElementById("resultsContainer");
         const resultCount = document.getElementById("resultCount");
-        const dataStatus = document.getElementById("dataStatus");
 
         function setMessage(message, type = "info") {
             messageBox.textContent = message;
@@ -283,14 +276,7 @@
         }
 
         function updateDataStatus(data) {
-            if (!data.status) {
-                return;
-            }
-
-            dataStatus.textContent = data.status;
-            dataStatus.className = data.status_ready
-                ? "status status-ready"
-                : "status status-error";
+            return data;
         }
 
         function renderResults(results, query) {

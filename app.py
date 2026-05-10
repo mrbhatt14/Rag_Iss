@@ -813,7 +813,7 @@ def list_uploaded_documents():
 @app.route("/uploads/clear", methods=["POST"])
 def clear_uploaded_documents():
     """Remove uploaded documents and return to the spreadsheet data source."""
-    global uploaded_document_signature
+    global data_source_signature, last_excel_modified_at, uploaded_document_signature
 
     removed_count = 0
 
@@ -822,6 +822,8 @@ def clear_uploaded_documents():
         removed_count += 1
 
     uploaded_document_signature = None
+    data_source_signature = None
+    last_excel_modified_at = None
 
     try:
         ready, message = refresh_vector_store_if_needed()

@@ -851,6 +851,53 @@ def clear_uploaded_documents():
     )
 
 
+@app.route("/uploads/<path:filename>", methods=["DELETE"])
+def delete_uploaded_document(filename: str):
+    """Delete one uploaded document and rebuild the vector store."""
+    global data_source_signature, last_excel_modified_at, uploaded_document_signature
+
+    safe_filename = secure_filename(filename)
+    file_path = DOCUMENT_UPLOAD_DIR / safe_filename
+
+    if (
+        not safe_filename
+        or safe_filename != filename
+        or not file_path.exists()
+        or file_path.suffix.lower() not in ALLOWED_DOCUMENT_EXTENSIONS
+    ):
+        return jsonify({"error": "Uploaded document was not found."}), 404
+
+    file_path.unlink()
+    uploaded_document_signature = None
+    data_source_signature = None
+    last_excel_modified_at = None
+
+    try:
+        ready, message = refresh_vector_store_if_needed()
+    except Exception as error:
+        message = f"Document was removed, but re-indexing failed: {error}"
+
+        return (
+            jsonify(
+                {
+                    "error": message,
+                    "status": message,
+                    "status_ready": False,
+                }
+            ),
+            500,
+        )
+
+    return jsonify(
+        {
+            "message": f"Removed {safe_filename}.",
+            "upload_summary": uploaded_documents_summary(),
+            "status": message,
+            "status_ready": ready,
+        }
+    )
+
+
 @app.route("/search", methods=["POST"])
 def search():
     """Receive a query, run semantic search, and return relevant Excel rows."""

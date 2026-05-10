@@ -188,10 +188,20 @@
                 const meta = document.createElement("p");
                 meta.textContent = `${formatFileSize(uploadedDocument.size_kb)} · ${uploadedDocument.chunks} chunk${uploadedDocument.chunks === 1 ? "" : "s"}`;
 
+                const deleteButton = document.createElement("button");
+                deleteButton.className = "document-delete-button";
+                deleteButton.type = "button";
+                deleteButton.setAttribute("aria-label", `Delete ${uploadedDocument.name}`);
+                deleteButton.textContent = "×";
+                deleteButton.addEventListener("click", () => {
+                    deleteUploadedDocument(uploadedDocument.name);
+                });
+
                 detail.appendChild(name);
                 detail.appendChild(meta);
                 item.appendChild(dot);
                 item.appendChild(detail);
+                item.appendChild(deleteButton);
                 documentList.appendChild(item);
             });
         }
@@ -456,6 +466,35 @@
                 showToast("Unable to remove uploaded documents. Is Flask running?", "error");
             }
         });
+
+        async function deleteUploadedDocument(filename) {
+            showToast(`Removing ${filename} and rebuilding the index...`, "info");
+
+            try {
+                const response = await fetch(`/uploads/${encodeURIComponent(filename)}`, {
+                    method: "DELETE"
+                });
+
+                const data = await response.json();
+                updateDataStatus(data);
+
+                if (data.upload_summary) {
+                    renderUploadSummary(data.upload_summary);
+                }
+
+                clearResults();
+
+                if (!response.ok) {
+                    showToast(data.error || "Could not delete the uploaded document.", "error");
+                    return;
+                }
+
+                setMessage("Enter a query to retrieve relevant information from your indexed content.", "info");
+                showToast(data.message || "Uploaded document removed.", "success");
+            } catch (error) {
+                showToast("Unable to delete uploaded document. Is Flask running?", "error");
+            }
+        }
 
         searchForm.addEventListener("submit", async (event) => {
             event.preventDefault();

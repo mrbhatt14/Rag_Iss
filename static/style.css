@@ -292,7 +292,7 @@ h1 {
 
 .document-item {
     display: grid;
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto 1fr auto;
     gap: 10px;
     align-items: center;
     padding: 13px 14px;
@@ -326,6 +326,25 @@ h1 {
     margin: 4px 0 0;
     color: var(--muted);
     font-size: 0.82rem;
+}
+
+.document-delete-button {
+    display: inline-grid;
+    place-items: center;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    color: #667085;
+    background: transparent;
+    border: 0;
+    border-radius: 999px;
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+.document-delete-button:hover {
+    color: var(--error-text);
+    background: #fef3f2;
 }
 
 .data-source-note {

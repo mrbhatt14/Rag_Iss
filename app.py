@@ -1,6 +1,7 @@
 import os
 import re
 import time
+import math
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlparse
@@ -297,43 +298,83 @@ def shorten_answer_text(text: str, query_tokens: set[str], limit: int = 320) -> 
     return shortened
 
 
-def extract_best_text_answer(query: str, results: list[dict[str, Any]]) -> Optional[dict[str, str]]:
-    """Return the best sentence-level answer when no structured extractor applies."""
+def cosine_similarity(left: list[float], right: list[float]) -> float:
+    """Compare two embedding vectors without adding another dependency."""
+    dot_product = sum(a * b for a, b in zip(left, right))
+    left_norm = math.sqrt(sum(a * a for a in left))
+    right_norm = math.sqrt(sum(b * b for b in right))
+
+    if not left_norm or not right_norm:
+        return 0.0
+
+    return dot_product / (left_norm * right_norm)
+
+
+def extract_best_text_answer(
+    query: str,
+    results: list[dict[str, Any]],
+    query_embedding: Optional[list[float]] = None,
+) -> Optional[dict[str, str]]:
+    """Return the best sentence-level answer using semantic similarity."""
     query_tokens = extract_search_tokens(query)
 
     if not query_tokens:
         return None
 
-    best_match = None
+    candidates = []
 
     for result_index, result in enumerate(results):
         for candidate in split_answer_candidates(result["text"]):
-            candidate_tokens = set(re.findall(r"[a-z0-9]+", candidate.lower()))
-            overlap = query_tokens.intersection(candidate_tokens)
-
-            if not overlap:
-                continue
-
-            score = (len(overlap) * 100) - result_index - (len(candidate) / 1000)
-
-            if not best_match or score > best_match["score"]:
-                best_match = {
-                    "score": score,
+            candidates.append(
+                {
                     "text": candidate,
                     "source": str(result.get("row", {}).get("Source", "")),
+                    "result_index": result_index,
                 }
+            )
 
-    if not best_match:
+    if not candidates:
+        return None
+
+    if query_embedding is None:
+        query_embedding = get_embedding_model().encode(
+            [query],
+            show_progress_bar=False,
+        ).tolist()[0]
+
+    candidate_embeddings = get_embedding_model().encode(
+        [candidate["text"] for candidate in candidates],
+        show_progress_bar=False,
+    ).tolist()
+
+    best_candidate = None
+
+    for candidate, candidate_embedding in zip(candidates, candidate_embeddings):
+        score = cosine_similarity(query_embedding, candidate_embedding)
+        score -= candidate["result_index"] * 0.01
+
+        if not best_candidate or score > best_candidate["score"]:
+            best_candidate = {
+                "score": score,
+                "text": candidate["text"],
+                "source": candidate["source"],
+            }
+
+    if not best_candidate:
         return None
 
     return {
         "label": "Answer",
-        "value": shorten_answer_text(best_match["text"], query_tokens),
-        "source": best_match["source"],
+        "value": shorten_answer_text(best_candidate["text"], query_tokens),
+        "source": best_candidate["source"],
     }
 
 
-def extract_direct_answer(query: str, results: list[dict[str, Any]]) -> Optional[dict[str, str]]:
+def extract_direct_answer(
+    query: str,
+    results: list[dict[str, Any]],
+    query_embedding: Optional[list[float]] = None,
+) -> Optional[dict[str, str]]:
     """Extract common direct answers from retrieved document chunks."""
     query_text = query.lower()
     extractors = [
@@ -388,7 +429,7 @@ def extract_direct_answer(query: str, results: list[dict[str, Any]]) -> Optional
                 "source": str(metadata.get("Source", "")),
             }
 
-    return extract_best_text_answer(query, results)
+    return extract_best_text_answer(query, results, query_embedding)
 
 
 def load_spreadsheet_dataframe() -> pd.DataFrame:
@@ -844,7 +885,7 @@ def search():
         result_limit = DOCUMENT_RESULT_LIMIT if using_uploaded_documents else RESULT_LIMIT
         results = results[:result_limit]
         direct_answer = (
-            extract_direct_answer(query, results)
+            extract_direct_answer(query, results, query_embedding)
             if using_uploaded_documents
             else None
         )

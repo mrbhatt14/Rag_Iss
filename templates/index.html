@@ -218,9 +218,11 @@
 
         function getHighlightTerms(query) {
             const stopWords = new Set([
-                "and", "are", "for", "from", "how", "into", "the", "what",
-                "when", "where", "which", "who", "why", "with", "show",
-                "tell", "give", "get", "only", "result", "results"
+                "about", "also", "and", "are", "been", "can", "could", "did",
+                "does", "for", "from", "had", "has", "have", "how", "into",
+                "is", "only", "result", "results", "show", "tell", "that",
+                "the", "this", "was", "were", "what", "when", "where",
+                "which", "who", "why", "with", "would", "give", "get"
             ]);
 
             return [...new Set((query.toLowerCase().match(/[a-z0-9]+/g) || [])

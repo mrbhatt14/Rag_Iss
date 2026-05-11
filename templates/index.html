@@ -36,11 +36,11 @@
                         name="documents"
                         type="file"
                         multiple
-                        accept=".csv,.xlsx,.txt,.md,.pdf"
+                        accept=".csv,.docx,.xlsx,.txt,.md,.pdf"
                     >
                     <div class="upload-icon" aria-hidden="true">↑</div>
                     <strong id="dropZoneTitle">Drop files here</strong>
-                    <p id="dropZoneHint">PDF · TXT · CSV · XLSX · MD only <button id="browseButton" type="button">browse</button></p>
+                    <p id="dropZoneHint">PDF · DOCX · TXT · CSV · XLSX · MD <button id="browseButton" type="button">browse</button></p>
                 </div>
 
                 <div class="upload-actions">
@@ -150,7 +150,7 @@
 
             if (!count) {
                 dropZoneTitle.textContent = "Drop files here";
-                dropZoneHint.innerHTML = 'PDF · TXT · CSV · XLSX · MD only <button id="browseButton" type="button">browse</button>';
+                dropZoneHint.innerHTML = 'PDF · DOCX · TXT · CSV · XLSX · MD <button id="browseButton" type="button">browse</button>';
                 document.getElementById("browseButton").addEventListener("click", () => {
                     documentInput.click();
                 });

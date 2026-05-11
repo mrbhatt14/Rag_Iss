@@ -39,8 +39,8 @@ MIN_RELEVANCE_SCORE = 0.45
 DOCUMENT_MIN_RELEVANCE_SCORE = 0.0
 MIN_DIRECT_ANSWER_SCORE = 0.25
 MIN_TOKEN_LENGTH = 3
-ALLOWED_DOCUMENT_EXTENSIONS = {".csv", ".xlsx", ".txt", ".md", ".pdf"}
-SUPPORTED_FILE_TYPES_MESSAGE = "Upload CSV, XLSX, TXT, Markdown, or PDF files. DOCX is not supported."
+ALLOWED_DOCUMENT_EXTENSIONS = {".csv", ".docx", ".xlsx", ".txt", ".md", ".pdf"}
+SUPPORTED_FILE_TYPES_MESSAGE = "Upload CSV, DOCX, XLSX, TXT, Markdown, or PDF files."
 
 STOP_WORDS = {
     "all",
@@ -528,6 +528,26 @@ def read_pdf_text(path: Path) -> str:
     return "\n".join(page_text)
 
 
+def read_docx_text(path: Path) -> str:
+    """Extract readable text from a DOCX file."""
+    try:
+        from docx import Document
+    except ImportError as error:
+        raise RuntimeError("DOCX support requires python-docx to be installed.") from error
+
+    document = Document(str(path))
+    paragraphs = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
+
+    for table in document.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+
+            if cells:
+                paragraphs.append(" | ".join(cells))
+
+    return "\n".join(paragraphs)
+
+
 def load_uploaded_document_rows() -> list[dict[str, Any]]:
     """Load supported uploaded documents into ChromaDB-ready records."""
     rows = []
@@ -543,6 +563,8 @@ def load_uploaded_document_rows() -> list[dict[str, Any]]:
             rows.extend(text_to_document_rows(path.read_text(encoding="utf-8"), path.name))
         elif suffix == ".pdf":
             rows.extend(text_to_document_rows(read_pdf_text(path), path.name))
+        elif suffix == ".docx":
+            rows.extend(text_to_document_rows(read_docx_text(path), path.name))
 
     return rows
 

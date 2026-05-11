@@ -222,7 +222,12 @@ def metadata_contains_query_token(metadata: dict[str, Any], query_tokens: set[st
 
 def get_matching_tokens(metadata: dict[str, Any], query_tokens: set[str]) -> set[str]:
     """Find meaningful query tokens that appear in one Excel row."""
-    row_text = " ".join(str(value) for value in metadata.values()).lower()
+    searchable_values = [
+        str(value)
+        for key, value in metadata.items()
+        if str(key).lower() not in {"chunk", "content", "source", "type"}
+    ]
+    row_text = " ".join(searchable_values).lower()
     row_tokens = set(re.findall(r"[a-z0-9]+", row_text))
 
     return query_tokens.intersection(row_tokens)
@@ -989,7 +994,7 @@ def search():
         )
 
     try:
-        exact_results = [] if using_uploaded_documents else search_exact_rows(query_tokens)
+        exact_results = search_exact_rows(query_tokens)
 
         if exact_results:
             return jsonify(
@@ -1057,7 +1062,7 @@ def search():
 
         exact_results = [result for result in results if result["has_exact_match"]]
 
-        if exact_results and not using_uploaded_documents:
+        if exact_results:
             results = exact_results
 
         result_limit = DOCUMENT_RESULT_LIMIT if using_uploaded_documents else RESULT_LIMIT

@@ -372,7 +372,7 @@ def extract_best_text_answer(
         return None
 
     return {
-        "label": "Answer",
+        "label": "Extracted Overview",
         "value": shorten_answer_text(best_candidate["text"], query_tokens),
         "source": best_candidate["source"],
     }

@@ -270,9 +270,10 @@
             card.className = "direct-answer";
 
             const label = document.createElement("span");
-            label.textContent = answer.label;
+            label.textContent = answer.label || "Extracted Overview";
 
-            const value = document.createElement("strong");
+            const value = document.createElement("p");
+            value.className = "direct-answer-text";
             appendHighlightedText(value, answer.value, query);
 
             card.appendChild(label);
@@ -280,6 +281,7 @@
 
             if (answer.source) {
                 const source = document.createElement("p");
+                source.className = "direct-answer-source";
                 source.textContent = `Source: ${answer.source}`;
                 card.appendChild(source);
             }

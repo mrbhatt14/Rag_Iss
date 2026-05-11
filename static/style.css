@@ -445,29 +445,31 @@ button:hover {
 }
 
 .direct-answer {
-    border: 1px solid #b7e4cc;
+    border: 1px solid #d9e2f1;
     border-radius: 8px;
     padding: 18px;
-    background: #ecfdf3;
+    background: #f8fafc;
 }
 
 .direct-answer span {
     display: block;
-    margin-bottom: 6px;
-    color: #067647;
+    margin-bottom: 8px;
+    color: #475467;
     font-size: 0.8rem;
     font-weight: 850;
     text-transform: uppercase;
 }
 
-.direct-answer strong {
-    display: block;
+.direct-answer-text {
+    margin: 0;
     color: #101828;
-    font-size: 1.25rem;
+    font-size: 1rem;
+    font-weight: 650;
+    line-height: 1.55;
     overflow-wrap: anywhere;
 }
 
-.direct-answer p {
+.direct-answer-source {
     margin: 8px 0 0;
     color: #475467;
     font-size: 0.9rem;
